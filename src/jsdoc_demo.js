@@ -1,11 +1,11 @@
 /**
  * 用于演示在objectjs中如何编写jsdoc
- * @author zhifu.wang(zhifu.wang@renren-inc.com)
+ * @author zhifu.wang
  */
 
 /**
  * 演示为objectjs的模块添加jsdoc注释
- * @author zhifu.wang(zhifu.wang@renren-inc.com)
+ * @author zhifu.wang
  * @version 1.0
  */
 object.add('JSDOCDemo', function(exports) {
