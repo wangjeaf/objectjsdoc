@@ -1,21 +1,24 @@
-@REM this is a bat for auto-generate jsdoc
-@REM
-@REM NOTICE: should modify JSDOC_ROOT and BROWSER_PATH before run it.
-@REM
-@REM @usage : 
-@REM   	1. runjsdoc	   		(will generate jsdoc)
-@REM 	2. runjsdoc open	(will generate jsdoc, and open a html file with specified browser)
-@REM @example
-@REM 	project
-@REM   		|--- src
-@REM   		|--- doc(auto-generated)
-@REM   	cd project dir --> runjsdoc open
-@REM
-@REM @version 0.1
-@REM @author zhifu.wang
+goto :comment
+This is a shell can be used to generate jsdoc for objectjs
+
+NOTICE: You should modify JSDOC_ROOT and BROWSER_PATH property before run this shell.
+
+@usage : 
+  	1. runjsdoc	   		(will generate jsdoc)
+	2. runjsdoc open	(will generate jsdoc, and open a html file with specified browser)
+
+@example
+	project
+  		|--- src
+  		|--- doc(auto-generated)
+  	cd project dir --> runjsdoc open
+
+@version 0.1
+@author zhifu.wang
+:comment
 
 @echo off
-REM ---------------- set constants, should be modified ----------------
+REM ---------------- set constants, should be modified by user ----------------
 set JSDOC_ROOT=D:\workhome\jsdoc
 set BROWSER_PATH="D:\Program Files\chrome-win32\chrome.exe"
 
@@ -27,10 +30,10 @@ if not exist %JSDOC_ROOT%\jsdoc.js (
 REM ---------------- set dirs ----------------
 set DISK=%CD:~0,2%
 set CURRENT_PATH="%CD%"
-
 set SRC_DIR="%CD%\src"
 set OUT_DIR="%CD%\doc"
 set "ARG=%1"
+
 if not exist %SRC_DIR% (
 	echo [ERROR] no src dir in "%CD%"
 	goto :finish
@@ -43,7 +46,7 @@ if not "%ARG%" == "open" (
 	)
 )
 
-REM ---------------- remove exist dirs and files ----------------
+REM ---------------- remove exist files ----------------
 if exist "%CD%\doc" (
 	del /f /s /q "%CD%\doc\"
 )
@@ -57,12 +60,12 @@ cd %JSDOC_ROOT%
 echo [INFO] generating jsdoc for %SRC_DIR%
 java -cp %JSDOC_ROOT%\lib\js.jar org.mozilla.javascript.tools.shell.Main -modules node_modules -modules rhino_modules -modules plugins %JSDOC_ROOT%\jsdoc.js %SRC_DIR% -r 10 -d %OUT_DIR% -p
 
-REM ---------------- rename a.html#b to a.html ----------------
+REM ---------------- rename a.html#b to a.html, just in case ----------------
 for /r %OUT_DIR% %%a in (*.html#*) do (
 	ren %%a %%~na.html
 )
 
-REM ---------------- open one jsdoc html file with browser if open mode----------------
+REM ---------------- open one generated html file with browser specified if in open mode----------------
 if "%ARG%" == "open" (
 	if not exist %BROWSER_PATH% (
 		echo [ERROR] Wrong browser file path : %BROWSER_PATH%
