@@ -1,12 +1,13 @@
 @echo off
 goto :comment_end
-This is a shell can be used to generate jsdoc for objectjs
+-------------------------------------------------------------------------------
+This is a shell for Windows, can be used to generate jsdoc for objectjs
 
 NOTICE: You should modify JSDOC_ROOT and BROWSER_PATH property before run this shell.
 
 @usage : 
-  	1. runjsdoc			(will generate jsdoc)
-	2. runjsdoc open	(will generate jsdoc, and open a html file with specified browser)
+  	1. runjsdoc         (will generate jsdoc)
+	2. runjsdoc open    (will generate jsdoc, and open a html file with specified browser)
 
 @example
 	project
@@ -17,6 +18,7 @@ NOTICE: You should modify JSDOC_ROOT and BROWSER_PATH property before run this s
 
 @version 0.1
 @author wangjeaf
+-------------------------------------------------------------------------------
 :comment_end
 
 REM ---------------- set constants, should be modified by user ----------------
