@@ -20,6 +20,7 @@
  * 16、将object的各个成员的jsdoc注释集合到一起
  * 17、自动生成Class的一些静态方法的文档（需要在var Class = this.Class时添加@namespace Class的jsdoc注释）
  * 18、在@see添加时，也需要考虑see的内容出现在@see之后时，会导致@see不成功的情况
+ * 19、在生成的HTML文件中，将源代码地址从本地文件夹指向hg服务器上的文件（目前lineno有点不准）
  *
  * 难点（还需要完善的）：
  * 1、BUG：Object(Class)与object(namespace)不能同时存在，@class Object和@namespace object会导致两者注释内容相同
@@ -135,7 +136,7 @@ exports.newDoclet = function(e) {
 	if (!containsObject) {
 		return;
 	}
-	var doclet = e.doclet;
+	var doclet = e.doclet, tags = doclet.tags;
 	var code = doclet.meta.code;
 
 	// 获取操作方法，例如this.A = classmethod(function(){})的classmethod
@@ -209,7 +210,55 @@ exports.newDoclet = function(e) {
 
 	// 特殊处理object/Class两个namespace
 	handleSpecialNamespace.call(this, code, doclet);
+
+	// 修改一下文档中的Source属性，使其指向hg.xnimg.cn上的源文件
+	modifyDocletSource(doclet);
 };
+
+/**
+ * 从源文件的本地目录路径转为hg服务器路径的正则表达式
+ */
+var URL_REPLACE_REG = (function() {
+	// 目前hg上维护的库，针对不同的库，需要生成不同的url
+	// 例如，renren/apps/request/src/ 要转换为renren/apps/request/file/xxx/src
+	// 		  而不能转换为 renren/file/xxx/apps/request/src
+	var repos = [
+		'objectjs.org/html5-(history|postMessage)',
+		'objectjs.org/object', 
+		'renren/apps/[\\\w-]+', 	
+		'renren/core/modules/publisher', 
+		'renren/core', 
+		'renren/jspro', 
+		'renren/modules/[\\\w-]+',
+		'renren/webpager', 
+		'renren', 
+		'smallsite/main', 
+		'smallsite/modules/publisher', 
+		'smallsite'
+	];
+	for(var i = 0, l = repos.length; i < l; i++) {
+		repos[i] = repos[i].replace(/\//g, '\\/');
+	}
+	return new RegExp("^.*\\\/(" +repos.join('|')+ ")\\\/");
+})();
+
+/**
+ * 修改一下doclet.meta.filename属性，使其指向hg服务器上的源代码文件，而不是本地文件
+ * 但是有一个问题：如果本地文件与服务器上的文件不一致，则修改完以后lineno显示会有问题（对使用影响不大）
+ * 因此需要将本地文件与服务器上的default分支文件统一以后，再生成jsdoc
+ *
+ * 例如： F:/works/workspace/objectjs.org/object/src/object/core.js
+ * 			---> http://hg.xnimg.cn/objectjs.org/object/file/1ccca05a2597/src/object/core.js
+ * 		  F:/works/workspace/renren/core/src/....js
+ * 		    ---> http://hg.xnimg.cn/renren/core/file/src/....js
+ */
+function modifyDocletSource(doclet) {
+	var oldFileName = doclet.meta.filename;
+	// 转换为hg服务器源码文件路径
+	var newFileName = oldFileName.replace(URL_REPLACE_REG, 'http://hg.xnimg.cn/$1/file/tip/');
+	// 添加超链接，点击直接打开hg服务器上的文件（需要绑定hg hosts）
+	doclet.meta.filename = '<a href=\'' + newFileName + '\'/>' + newFileName + '</a>';
+}
 
 /**
  * 处理特殊的namespace，比如object/Class
