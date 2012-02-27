@@ -6,8 +6,8 @@
 # NOTICE: You should modify JSDOC_ROOT and BROWSER_PATH property before run this shell
 #
 # @usage :
-#    1. runjsdoc     (will generate jsdoc)
-#    2. runjsdoc -o  (will generate jsdoc, and open a html file with specified browser)
+#    1. sh sh_dir/runjsdoc.sh     (will generate jsdoc)
+#    2. sh sh_dir/runjsdoc.sh -o  (will generate jsdoc, and open a html file with specified browser -- not support currently)
 #
 # @example
 #     project
@@ -15,8 +15,8 @@
 #        |--- doc
 #              |--- jsdoc (auto-generated)
 #
-#     cd project dir --> runjsdoc
-#     cd project dir --> runjsdoc -o
+#     cd project dir --> sh sh_dir/runjsdoc.sh
+#     cd project dir --> sh sh_dir/runjsdoc.sh -o
 #
 # @version 0.1
 # @author wangjeaf
