@@ -7,7 +7,7 @@
 #
 # @usage :
 #    1. sh sh_dir/runjsdoc.sh     (will generate jsdoc)
-#    2. sh sh_dir/runjsdoc.sh -o  (will generate jsdoc, and open a html file with specified browser -- not support currently)
+#    2. sh sh_dir/runjsdoc.sh -o  (will generate jsdoc, and open a html file with specified browser -- not support yet)
 #
 # @example
 #     project
@@ -39,7 +39,7 @@ fi
 usage() {
 	echo "[Usage] : "
 	echo "   1. sh sh_dir/runjsdoc.sh"
-	echo "   2. sh sh_dir/runjsdoc.sh -o (will open html automatically, not support currently)"
+	echo "   2. sh sh_dir/runjsdoc.sh -o (will open html automatically, not support yet)"
 }
 
 # ---------- set constants ----------
