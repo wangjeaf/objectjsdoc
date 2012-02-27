@@ -38,8 +38,8 @@ fi
 # ---------- define usage method ----------
 usage() {
 	echo "[Usage] : "
-	echo "   1. runjsdoc "
-	echo "   2. runjsdoc -o (will open html automatically)"
+	echo "   1. sh sh_dir/runjsdoc.sh"
+	echo "   2. sh sh_dir/runjsdoc.sh -o (will open html automatically, not support currently)"
 }
 
 # ---------- set constants ----------
