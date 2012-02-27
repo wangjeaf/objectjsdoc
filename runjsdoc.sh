@@ -1,3 +1,5 @@
+#!/bin/sh
+
 #----------------------------------------------------------------------
 # This is a shell for Linux, can be used to generate jsdoc for objectjs
 # 
