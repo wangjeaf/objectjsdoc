@@ -7,7 +7,7 @@
 #
 # @usage :
 #    1. runjsdoc     (will generate jsdoc)
-#    2. runjsdoc -o  (will generate jsdoc, and open a html file with specified browser
+#    2. runjsdoc -o  (will generate jsdoc, and open a html file with specified browser)
 #
 # @example
 #     project
