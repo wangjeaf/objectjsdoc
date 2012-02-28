@@ -21,6 +21,9 @@
  * 17、自动生成Class的一些静态方法的文档（需要在var Class = this.Class时添加@namespace Class的jsdoc注释）
  * 18、在@see添加时，也需要考虑see的内容出现在@see之后时，会导致@see不成功的情况
  * 19、在生成的HTML文件中，将源代码地址从本地文件夹指向hg服务器上的文件（目前lineno有点不准）
+ * 20、支持老base中通过XN.$extend(Class, {})的方式为类添加成员，并生成doc
+ * 21、支持闭包函数中为exports添加成员
+ * 22、see的顺序调整，处理this.A=this.B;和this.A=this.B=function(){}的不同;（如果有三个等号的，要继续修改~~）
  *
  * 难点（还需要完善的）：
  * 1、BUG：Object(Class)与object(namespace)不能同时存在，@class Object和@namespace object会导致两者注释内容相同
@@ -53,15 +56,25 @@ var delayedMixin = {};
 var autoJsDocSuffix = ' [AUTO-GENERATED]';
 /** 代码中是否有objectjs模块定义的内容，如果没有则不需要额外操作，提高效率 */
 var containsObject = false;
-
+var currentModuleName = null;
 /**
  * 分析源码，在object.add/object.define前面加入@exports moduleName标签
  */
 exports.beforeParse = function(e) {
 	var source = e.source;
+
 	// 如果有object.add或object.define，则需要特殊处理一下
 	if (/object.(add|define)/.test(source)) {
 		containsObject = true;
+
+		// 如果在@method之后添加了别名，则此别名将会成为global的，因此去掉别名（@class使用不考虑）
+		e.source = e.source.replace(/(@(?:method|function|member|event|external))\s+[\w\_\.\$ ]+/g, '$1');
+		if (e.filename.indexOf('/objectjs.org/object/') == -1) {
+			e.source = e.source.replace(/(@(?:namespace|class))\s+[\w\_\.\$]+/g, '$1');
+			e.source = e.source.replace(/(@(?:extends|extend|module))\s+[\w\_\.\$]+/g, '');
+		}
+
+		source = e.source;
 		// 有的模块引用了sys（这里粗略判断sys），这里加入sys模块的声明（确保在同一行）
 		if (!sysAdded && source.indexOf('sys') != -1) {
 			source = "object.add('sys', function(exports){/** modules属性用于利用名称动态获取模块，例如：var dom = sys.modules['dom']; */this.modules = ''});" + source;
@@ -72,8 +85,6 @@ exports.beforeParse = function(e) {
 		source = source.replace(/object\.add\s*\(/, 'object.add(');
 		source = source.replace(/object\.define\s*\(/, 'object.define(');
 		e.source = addAtExportsInComment(source);
-		// 如果在@method之后添加了别名，则此别名将会成为global的，因此去掉别名（@class使用不考虑）
-		e.source = e.source.replace(/(@(?:method|function|member|event|external))\s+[\w\_\.]+/g, '$1');
 	} else {
 		// object目录下的不忽略
 		//if (e.filename.indexOf('/objectjs.org/object/') != -1) {
@@ -88,6 +99,7 @@ exports.beforeParse = function(e) {
  */
 exports.fileComplete = function(e) {
 	containsObject = false;
+	currentModuleName = null;
 	print('[Complete] ' + e.filename);
 }
 
@@ -163,6 +175,7 @@ exports.newDoclet = function(e) {
 	}
 
 	if (doclet.kind == 'module') {
+		currentModuleName = doclet.longname;
 		// 回复模块的依赖关系注释
 		recoverModuleDependencies.call(this, doclet);
 
@@ -213,7 +226,28 @@ exports.newDoclet = function(e) {
 
 	// 修改一下文档中的Source属性，使其指向hg.xnimg.cn上的源文件
 	modifyDocletSource(doclet);
+
+	// 调整exports添加的成员的scope 
+	modifyExportsScope(code, doclet)
 };
+
+/**
+ * 通过exports.xxx添加的模块成员，scope都是static的
+ * 调整一下，跟this.xxx添加的成员一样，都是instance的
+ *
+ * @param code doclet对应的代码对象
+ * @param doclet 当前需要修改scope的doclet
+ */
+function modifyExportsScope(code, doclet) {
+	if (code.node && code.node.parent) {
+		var ppSrc = code.node.parent.toSource();
+		if (/^exports\./.test(ppSrc)) {
+			if (doclet.scope == 'static') {
+				doclet.scope = 'instance';
+			}
+		}
+	}
+}
 
 /**
  * 从源文件的本地目录路径转为hg服务器路径的正则表达式
@@ -257,7 +291,7 @@ function modifyDocletSource(doclet) {
 	// 转换为hg服务器源码文件路径
 	var newFileName = oldFileName.replace(URL_REPLACE_REG, 'http://hg.xnimg.cn/$1/file/tip/');
 	// 添加超链接，点击直接打开hg服务器上的文件（需要绑定hg hosts）
-	doclet.meta.filename = '<a href=\'' + newFileName + '\'/>' + newFileName + '</a>';
+	doclet.meta.filename = '<a href=\'' + newFileName + '\' target=\'_blank\'/>' + newFileName + '</a>';
 }
 
 /**
@@ -311,7 +345,7 @@ function recoverSeeRelation(longname, replacedName, replacedName2, doclet) {
 	}
 	if (see) {
 		for (var i=0, l=see.length; i<l; i++) {
-			modifyDocletSeeInfo(see[i], doclet, okName);
+			modifyDocletSeeInfo(doclet, see[i]);
 		}
 		//清空
 		globalSees[longname] = null;
@@ -402,7 +436,7 @@ function recoverModuleDependencies(doclet) {
 		doclet.requires = [];
 		// 将依赖关系加进去
 		requires.forEach(function(one) {
-			doclet.requires.push('module:' + transModuleName(one));
+			doclet.requires.push('module:' + transModuleName(one, doclet.name));
 		});
 	}
 }
@@ -430,7 +464,7 @@ function handleContinuousAssignment(targetName, code, doclet) {
 		// this.A = this.B = function() {}
 		// 时，需要在this.A的注释中添加@see B的内容
 		var ppSrc = code.node.parent.toSource().split('\n')[0];
-		if (m = /^(?:this\.|exports\.|(?:var\s+)?)([\$\w_]+)\s*=\s*(?:this|exports)\.([\$\w_]+)\s*(?:$|=)/.exec(ppSrc)) {
+		if (m = /^(?:this\.|exports\.|(?:var\s+)?)([\$\w_]+)\s*=\s*(?:this|exports)\.([\$\w_]+)\s*($|=)/.exec(ppSrc)) {
 			modifyOrStoreDocletSee(doclet, '#', m);
 		} 
 		// this.A = A的情况
@@ -438,7 +472,10 @@ function handleContinuousAssignment(targetName, code, doclet) {
  		// 由于function X的情况会很多，全部保存备用不现实
 		// 暂时不做这样的处理，这里简单处理一下
 		// this.A = A的情况，例如：this.__detectUAExtra = detectUAExtra
-		else if (m = /^(?:this\.|exports\.)([\w_]+)\s*=\s*([\w_]+)\s*(?:$|=)/.exec(ppSrc)){
+		else if (m = /^(?:this\.|exports\.)([\w_]+)\s*=\s*([\w_]+)\s*($|=)/.exec(ppSrc)){
+			if (/^[\d\.-]*$/.test(m[2])) {
+				return;
+			}
 			modifyOrStoreDocletSee(doclet, '~', m);
 		}
 	}
@@ -454,15 +491,27 @@ function modifyOrStoreDocletSee(doclet, seperator, m) {
 		return;
 	}
 	var comment = doclet.comment.replace(/@see\s+/g, '@see ');
-	var targetSeeName = doclet.memberof + seperator + m[2];
-	var parentDoclet = globalModules[targetSeeName];
-	if (parentDoclet) {
-		modifyDocletSeeInfo(doclet, parentDoclet, targetSeeName);
-	} else {
-		if (!globalSees[targetSeeName]) {
-			globalSees[targetSeeName] = [];
+	var targetSeeName;
+	// 如果是this.A = this.B = function(){}形式的赋值，则是B see A
+	if (m[3] == '=') {
+		targetSeeName = doclet.memberof + seperator + m[1];
+		var secondDoclet = doclet.memberof + seperator + m[2];
+		if (!globalSees[secondDoclet]) {
+			globalSees[secondDoclet] = [];
 		}
-		globalSees[targetSeeName].push(doclet);
+		globalSees[secondDoclet].push(doclet);
+	} else {
+		// 如果是this.A = this.B;形式的赋值，则是A see B
+		targetSeeName = doclet.memberof + seperator + m[2];
+		var seeDoclet = globalModules[targetSeeName];
+		if (seeDoclet) {
+			modifyDocletSeeInfo(doclet, seeDoclet);
+		} else {
+			if (!globalSees[targetSeeName]) {
+				globalSees[targetSeeName] = [];
+			}
+			globalSees[targetSeeName].push(doclet);
+		}
 	}
 }
 
@@ -470,38 +519,38 @@ function modifyOrStoreDocletSee(doclet, seperator, m) {
  * 修改一个Doclet的@see及其相关描述信息
  *
  * @param doclet 需要修改的doclet
- * @param parentDoclet 用来参考，被see的doclet
- * @param targetSeeName @see后面的字符串（实际上等于parentDoclet.longname）
+ * @param seeDoclet 用来参考，被see的doclet
+ * @param targetSeeName @see后面的字符串（实际上等于seeDoclet.longname）
  */
-function modifyDocletSeeInfo(doclet, parentDoclet, targetSeeName) {
+function modifyDocletSeeInfo(doclet, seeDoclet) {
+	var targetSeeName = seeDoclet.longname;
 	if (doclet.comment.indexOf('@see ' + targetSeeName) == -1) {
 		doclet.addTag('see', targetSeeName);
 	}
 	// 避免创建一大堆相同的类
-	if (parentDoclet.kind != 'class') {
-		doclet.kind = parentDoclet.kind;
-		doclet.access = parentDoclet.access;
+	if (seeDoclet.kind != 'class') {
+		doclet.kind = seeDoclet.kind;
+		doclet.access = seeDoclet.access;
 		// scope [global, static, instance, inner, class(added)]
-		if (doclet.scope == 'instance' && (parentDoclet.scope == 'static' || parentDoclet.scope == 'class')) {
-			doclet.scope = parentDoclet.scope;
+		if (doclet.scope == 'instance' && (seeDoclet.scope == 'static' || seeDoclet.scope == 'class')) {
+			doclet.scope = seeDoclet.scope;
 		}
 	}
 	// 原有的描述，如果不是自动生成的，就不覆盖了
 	if (!doclet.description || doclet.description.indexOf(autoJsDocSuffix) != -1) {
-		if (!parentDoclet.description) {
-			doclet.description = doclet.longname + '与' + parentDoclet.longname + '关联，但是' + 
-				parentDoclet.longname + '没有jsdoc注释，请手动添加！';
+		if (!seeDoclet.description) {
+			doclet.description = doclet.name + autoJsDocSuffix;
 		} else {
 			// 如果目标注释也是自动生成的，没用，不拷贝
-			if (parentDoclet.description.indexOf(autoJsDocSuffix) == -1) {
-				doclet.description = parentDoclet.description;
+			if (seeDoclet.description.indexOf(autoJsDocSuffix) == -1) {
+				doclet.description = seeDoclet.description;
 			}
 		}
 	} else {
 		// 如果前面的元素有注释，后面的元素没有，则将前面元素的描述复制到后一个元素
 		if (doclet.description.indexOf(autoJsDocSuffix) == -1) {
-			if (parentDoclet.description.indexOf(autoJsDocSuffix) != -1) {
-				parentDoclet.description = doclet.description;
+			if (seeDoclet.description.indexOf(autoJsDocSuffix) != -1) {
+				seeDoclet.description = doclet.description;
 			}
 		}
 	}
@@ -819,6 +868,18 @@ function findOwner(doclet) {
 					if (ref != null && parent.target && parent.target.toSource() == 'Class') {
 						return this.refs['astnode' + parent.hashCode()];
 					}
+					if (parent.target) {
+						// 如果是使用XN.$extend的方式扩展到类上的，则需要找到正确的归属
+						if(parent.target.toSource() == 'XN.$extend') {
+							var extended = /XN\.\$extend\(([\w\.\$_-]+)\s*,/.exec(parent.toSource());
+							if (extended) {
+								extended = extended[1];
+								extended = extended.replace('.prototype', '');
+								extended = extended.replace(/^(exports|this)./g, currentModuleName + '#');
+								return globalModules[extended];
+							}
+						}
+					}
 					parent = parent.parent;
 				}
 			} else {
@@ -871,6 +932,10 @@ function findOwner(doclet) {
 					}
 					parent = parent.parent;
 				}
+			} else if (/exports\.[\_\w]+\s*=/.test(parentSrc)) {
+				// 在闭包中定义的exports成员
+				doclet.memberof = currentModuleName;
+				doclet.scope = 'instance';
 			} else if (node.parent) {
 				// 一个简单闭包中的节点，如果不归属于object，则应该归属于global
 				if (doclet.memberof != 'object') {
@@ -981,8 +1046,15 @@ function removeComments(code) {
 
 /**
  * 将模块名中的.替换成/，如：a.b.c -> a/b/c
+ *
+ * object.add('xn', './a, ./b', function() {});
+ * ./a --> xn/a
+ * ./b --> xn/b
  */
-function transModuleName(str) {
+function transModuleName(str, prefix) {
+	if (prefix) {
+		str = str.replace('./', prefix + '/');
+	}
 	while(str.indexOf('.') != -1) {
 		str = str.replace('.', '/');
 	}
