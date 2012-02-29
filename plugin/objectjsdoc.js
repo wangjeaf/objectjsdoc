@@ -24,6 +24,7 @@
  * 20、支持老base中通过XN.$extend(Class, {})的方式为类添加成员，并生成doc
  * 21、支持闭包函数中为exports添加成员
  * 22、see的顺序调整，处理this.A=this.B;和this.A=this.B=function(){}的不同;（如果有三个等号的，要继续修改~~）
+ * 23、支持通过require/require.async的方式添加依赖关系
  *
  * 难点（还需要完善的）：
  * 1、BUG：Object(Class)与object(namespace)不能同时存在，@class Object和@namespace object会导致两者注释内容相同
@@ -148,7 +149,7 @@ exports.newDoclet = function(e) {
 	if (!containsObject) {
 		return;
 	}
-	var doclet = e.doclet, tags = doclet.tags;
+	var doclet = e.doclet;
 	var code = doclet.meta.code;
 
 	// 获取操作方法，例如this.A = classmethod(function(){})的classmethod
@@ -406,7 +407,7 @@ function storeModuleDependencies(node) {
 	// 分析参数
 	if (node.arguments.size() < 3) {
 		requires = null;
-		factory = node.arguments.get(0);
+		factory = node.arguments.get(1);
 	} else {
 		var ele = node.arguments.get(1);
 		if (ele.type == Token.STRING) {
@@ -420,10 +421,27 @@ function storeModuleDependencies(node) {
 		}
 		factory = node.arguments.get(2);
 	}
+	requires = findRequireInSource(requires, factory);
 	// 需要将模块名按照CommonJS规范调整下
 	moduleName = transModuleName(moduleName);
 	// 此时Doclet还没有生成，因此需要把模块依赖关系存起来，等Doclet生成之后再把依赖关系加进去
 	globalRequires[moduleName] = requires;
+}
+
+/**
+ * 从源码中分析require关系
+ */
+function findRequireInSource(requires, factory) {
+	requires = requires || [];
+	var source = String(factory.toSource());
+	var reg = /[^.]\b(?:require|require\.async)\s*\(\s*['"]?([^'")]*)/g;
+    var match;
+	while ((match = reg.exec(source))) {
+		if (match[1] && requires.indexOf(match[1]) == -1) {
+			requires.push(match[1]);
+    	}
+	}
+	return requires;
 }
 
 /**
@@ -549,7 +567,7 @@ function modifyDocletSeeInfo(doclet, seeDoclet) {
 	} else {
 		// 如果前面的元素有注释，后面的元素没有，则将前面元素的描述复制到后一个元素
 		if (doclet.description.indexOf(autoJsDocSuffix) == -1) {
-			if (seeDoclet.description.indexOf(autoJsDocSuffix) != -1) {
+			if (!seeDoclet.description || seeDoclet.description.indexOf(autoJsDocSuffix) != -1) {
 				seeDoclet.description = doclet.description;
 			}
 		}
@@ -704,13 +722,17 @@ function findFullNameAccordingToRequire(node, targetName) {
 		// object.add('a', 'XN.d', function(exports, XN) {
 		//     Class.mixin(this, XN.d.A)的情况
 		// });
+		var containsModule = (targetName.indexOf('module:') == 0);
+		if (containsModule) {
+			targetName = targetName.replace('module:', '');
+		}
 		var targetModule = targetName.replace('/', '.').split('.');
 		var className = targetModule.pop();
 		targetModule = targetModule.join('.');
 		for(var i=0, l=requires.length; i<l; i++) {
 			var translated = requires[i].replace('/', '.');
 			if (translated == targetModule) {
-				return transModuleName(requires[i]) + '.' + className;
+				return (containsModule ? 'module:' : '') + transModuleName(requires[i]) + '.' + className;
 			}
 		}
 		// 如果是：
@@ -724,7 +746,7 @@ function findFullNameAccordingToRequire(node, targetName) {
 				// 拼出结果
 				splited.pop();
 				splited.push(targetName);
-				return splited.join('/');
+				return ((containsModule ? 'module:' : '') + splited.join('/'));
 			}
 		}
 	}
@@ -774,11 +796,19 @@ function makeClass(doclet) {
 		} else if (globalDocletNameMap[parent]){
 			doclet.addTag('augments', globalDocletNameMap[parent]);
 		} else {
-			// 走到这里，说明在新建此doclet时，继承的类并没有得到创建
-			if (!delayedParent[parent]) {
-				delayedParent[parent] = [];
+			// 利用require的信息，还原继承类的绝对路径
+			var finded = findFullNameAccordingToRequire(node, parent);
+			if (globalDocletNameMap[finded] === true) {
+				doclet.addTag('augments', finded);
+			} else if (globalDocletNameMap[finded]){
+				doclet.addTag('augments', globalDocletNameMap[finded]);
+			} else {
+				// 走到这里，说明在新建此doclet时，继承的类并没有得到创建
+				if (!delayedParent[parent]) {
+					delayedParent[parent] = [];
+				}
+				delayedParent[parent].push(doclet);
 			}
-			delayedParent[parent].push(doclet);
 		}
 	}
 	doclet.kind = 'class';
